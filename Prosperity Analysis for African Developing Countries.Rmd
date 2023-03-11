@@ -1,0 +1,418 @@
+---
+title: "prosperity"
+author: "Xuhui Ying, Zach Ahearn, Pen Trainer, Jenny Yue, Leo Li"
+date: "09/03/2022"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    toc: yes
+    toc_depth: 3
+    theme: paper
+    highlight: tango
+    df_print: paged
+---
+
+# load libraries
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(corrplot)
+library(MASS)
+library(skimr)
+library(readr)
+#library(VIF)
+#library(VIFCP)
+library(fastDummies)
+library(tidyverse)
+library(janitor)
+library(modelr)
+
+options(scipen = 999) # turns off scientific notation
+```
+
+# load data
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+df <- read_csv(file="WorldBank2002_2.csv") %>% clean_names()
+
+head(df)
+
+#data <- df %>% dplyr::select(-1)
+data <- df %>% select_if(is.numeric)
+
+skim(data)
+
+#Missing Values
+skim(data)
+nrow(data)
+
+#Missing Value Percentages by Column
+missing_values <- colMeans(is.na(data)*100)
+missing_values
+
+
+#Missing Value Percentages by Row
+rowSums(is.na(data))/47*100
+
+
+prosperity <- df %>%
+  dplyr::select(-military_expenditure_percent_of_gdp, -personal_computers_per_1_000_p) %>%
+  filter(series != "Somalia") %>% #Intially Just Somalia but then added 3 more later due to outliers
+  filter(series != "Angola") %>%
+  filter(series != "South Africa") %>%
+  filter(series != "Zimbabwe") %>% 
+  select_if(is.numeric)
+
+#prosperity %>% select_if(is.numeric) %>% skim()
+
+prosperity$co2_emissions_metric_tons_per[is.na(prosperity$co2_emissions_metric_tons_per)]<-median(prosperity$co2_emissions_metric_tons_per,na.rm=TRUE)
+prosperity$exports_of_goods_and_services[is.na(prosperity$exports_of_goods_and_services)]<-median(prosperity$exports_of_goods_and_services,na.rm=TRUE)
+prosperity$fertility_rate_total_births_p[is.na(prosperity$fertility_rate_total_births_p)]<-median(prosperity$fertility_rate_total_births_p,na.rm=TRUE)
+
+prosperity$fixed_line_and_mobile_phone_sub[is.na(prosperity$fixed_line_and_mobile_phone_sub)]<-median(prosperity$fixed_line_and_mobile_phone_sub,na.rm=TRUE)
+prosperity$foreign_direct_investment_net[is.na(prosperity$foreign_direct_investment_net)]<-median(prosperity$foreign_direct_investment_net,na.rm=TRUE)
+prosperity$gni_per_capita_atlas_method_c[is.na(prosperity$gni_per_capita_atlas_method_c)]<-median(prosperity$gni_per_capita_atlas_method_c,na.rm=TRUE)
+
+
+
+prosperity$gni_atlas_method_current_us[is.na(prosperity$gni_atlas_method_current_us)]<-median(prosperity$gni_atlas_method_current_us,na.rm=TRUE)
+prosperity$gross_capital_formation_percent_of_g[is.na(prosperity$gross_capital_formation_percent_of_g)]<-median(prosperity$gross_capital_formation_percent_of_g,na.rm=TRUE)
+prosperity$imports_of_goods_and_services[is.na(prosperity$imports_of_goods_and_services)]<-median(prosperity$imports_of_goods_and_services,na.rm=TRUE)
+
+prosperity$internet_users_per_1_000_peopl[is.na(prosperity$internet_users_per_1_000_peopl)]<-median(prosperity$internet_users_per_1_000_peopl,na.rm=TRUE)
+prosperity$long_term_debt_dod_current_us[is.na(prosperity$long_term_debt_dod_current_us)]<-median(prosperity$long_term_debt_dod_current_us,na.rm=TRUE)
+prosperity$net_barter_terms_of_trade_2000[is.na(prosperity$net_barter_terms_of_trade_2000)]<-median(prosperity$net_barter_terms_of_trade_2000,na.rm=TRUE)
+
+prosperity$short_term_debt_outstanding_do[is.na(prosperity$short_term_debt_outstanding_do)]<-median(prosperity$short_term_debt_outstanding_do,na.rm=TRUE)
+prosperity$ln_gni[is.na(prosperity$ln_gni)]<-median(prosperity$ln_gni,na.rm=TRUE)
+
+
+```
+# Full Model
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+#Fit multiple regression model
+
+fullreg <- lm(gdp_current_us~., prosperity)
+
+fullreg
+summary(fullreg)
+plot(fullreg)
+
+#check for multicollinearity
+
+vifres_1 <- car::vif(fullreg)
+vifres_1
+
+```
+# Reduced Model - backward elimination (stepAIC)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+# Try Stepwise Selection to reduce model
+
+step <- stepAIC(fullreg, direction="both")
+summary(step)
+plot(step)
+
+# check reduced model for multicollinearity
+
+vifres_2 <- car::vif(step)
+vifres_2
+
+```
+
+# Reduced Model - Remove ln_gni (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_3 <- lm(gdp_current_us ~ agriculture_value_added_percent_of + 
+    co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + gni_atlas_method_current_us + 
+    gross_capital_formation_percent_of_g + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + 
+    internet_users_per_1_000_peopl + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + services_etc_value_added_percent + surface_area_sq_km, data = prosperity)
+
+model_3
+summary(model_3)
+plot(model_3)
+
+#check for multicollinearity
+
+vifres_3 <- car::vif(model_3)
+vifres_3
+
+```
+
+# Reduced Model - Remove agriculture_value_added_percent_of (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_4 <- lm(gdp_current_us ~  co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + gni_atlas_method_current_us + 
+    gross_capital_formation_percent_of_g + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + 
+    internet_users_per_1_000_peopl + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + services_etc_value_added_percent + surface_area_sq_km, data = prosperity)
+
+model_4
+summary(model_4)
+plot(model_4)
+
+#check for multicollinearity
+
+vifres_4 <- car::vif(model_4)
+vifres_4
+
+```
+
+# Reduced Model - Remove services_etc_value_added_percent (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_5 <- lm(gdp_current_us ~  co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + gni_atlas_method_current_us + 
+    gross_capital_formation_percent_of_g + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + 
+    internet_users_per_1_000_peopl + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_5
+summary(model_5)
+plot(model_5)
+
+#check for multicollinearity
+
+vifres_5 <- car::vif(model_5)
+vifres_5
+
+```
+
+# Reduced Model - Remove gross_capital_formation_percent_of_g (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_6 <- lm(gdp_current_us ~  co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + gni_atlas_method_current_us + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + 
+    internet_users_per_1_000_peopl + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_6
+summary(model_6)
+plot(model_6)
+
+#check for multicollinearity
+
+vifres_6 <- car::vif(model_6)
+vifres_6
+
+```
+
+# Reduced Model - Remove internet_users_per_1_000_peopl (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_7 <- lm(gdp_current_us ~ co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + gni_atlas_method_current_us + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_7
+summary(model_7)
+plot(model_7)
+
+#check for multicollinearity
+
+vifres_7 <- car::vif(model_7)
+vifres_7
+
+```
+
+# Reduced Model - Remove gni_atlas_method_current_us (VIF > 10)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_8 <- lm(gdp_current_us ~ co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + long_term_debt_dod_current_us + 
+    merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_8
+summary(model_8)
+plot(model_8)
+
+#check for multicollinearity
+
+vifres_8 <- car::vif(model_8)
+vifres_8
+
+```
+
+# Reduced Model - Remove gni_atlas_method_current_us (VIF > 5)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_9 <- lm(gdp_current_us ~ co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + merchandise_trade_percent_of_gdp + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_9
+summary(model_9)
+plot(model_9)
+
+#check for multicollinearity
+
+vifres_9 <- car::vif(model_9)
+vifres_9
+
+```
+
+# Reduced Model - Remove merchandise_trade_percent_of_gdp (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_10 <- lm(gdp_current_us ~ co2_emissions_metric_tons_per + fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_10
+summary(model_10)
+plot(model_10)
+
+#check for multicollinearity
+
+vifres_10 <- car::vif(model_10)
+vifres_10
+
+```
+
+# Reduced Model - Remove co2_emissions_metric_tons_per (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_11 <- lm(gdp_current_us ~ fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + official_development_assistance + 
+    population_total + surface_area_sq_km, data = prosperity)
+
+model_11
+summary(model_11)
+plot(model_11)
+
+#check for multicollinearity
+
+vifres_11 <- car::vif(model_11)
+vifres_11
+
+```
+
+# Reduced Model - Remove official_development_assistance (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_12 <- lm(gdp_current_us ~ fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + inflation_gdp_deflator_annual + population_total + surface_area_sq_km, data = prosperity)
+
+model_12
+summary(model_12)
+plot(model_12)
+
+#check for multicollinearity
+
+vifres_12 <- car::vif(model_12)
+vifres_12
+
+```
+
+# Reduced Model - Remove inflation_gdp_deflator_annual (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_13 <- lm(gdp_current_us ~ fertility_rate_total_births_p + 
+    foreign_direct_investment_net + immunization_measles_percent_of_chi + 
+    imports_of_goods_and_services + population_total + surface_area_sq_km, data = prosperity)
+
+model_13
+summary(model_13)
+plot(model_13)
+
+#check for multicollinearity
+
+vifres_13 <- car::vif(model_13)
+vifres_13
+
+```
+
+# Reduced Model - Remove immunization_measles_percent_of_chi (p-value > 0.05)
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_14 <- lm(gdp_current_us ~ fertility_rate_total_births_p + 
+    foreign_direct_investment_net + imports_of_goods_and_services + population_total + surface_area_sq_km, data = prosperity)
+
+model_14
+summary(model_14)
+plot(model_14)
+
+#check for multicollinearity
+
+vifres_14 <- car::vif(model_14)
+vifres_14
+
+```
+
+# Reduced Model - take a log transformation
+
+```{r, eval=TRUE, message=FALSE, warning=FALSE}
+
+model_15 <- lm(log10(gdp_current_us) ~ fertility_rate_total_births_p + 
+    foreign_direct_investment_net + imports_of_goods_and_services + log10(population_total) + surface_area_sq_km, data = prosperity)
+
+model_15
+summary(model_15)
+plot(model_15)
+
+#check for multicollinearity
+
+vifres_15 <- car::vif(model_15)
+vifres_15
+
+```
+
+# predictions
+
+```{r}
+data_predict <- add_predictions(prosperity, var = "winnings_pred", model_15)
+
+residual <- data_predict %>%
+  mutate(compare = if_else(winnings_pred<log10(gdp_current_us), 'underestimated', 'overestimated'), error = log10(gdp_current_us) - winnings_pred, abs_error = abs(log10(gdp_current_us) - winnings_pred),log_gdp = log10(gdp_current_us)) %>%
+  dplyr::select(log_gdp, winnings_pred, compare, error, abs_error)
+
+residual
+
+residual %>%
+  slice_min(order_by = abs_error, n = 10) %>%
+  dplyr::select(log_gdp, winnings_pred, compare, abs_error)
+
+residual %>%
+  slice_min(order_by = error, n = 10) %>%
+  dplyr::select(log_gdp, winnings_pred, compare, error)
+  
+residual %>%
+  slice_max(order_by = error, n = 10) %>%
+  dplyr::select(log_gdp, winnings_pred, compare, error)
+```
